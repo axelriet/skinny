@@ -13,17 +13,17 @@
 #include "skinny128.h"
 
 // compute x = LFSR2(y) on all bytes within y
-#define LFSR2(x, y) ({ 											\
+#define LFSR2(x, y) { 											\
 	tmp0 	= _mm_slli_epi32((y), 2);							\
 	tmp0 	= _mm_xor_si128(tmp0, (y)); 						\
 	tmp0 	= _mm_and_si128(tmp0, _mm_set1_epi32(0x80808080));	\
 	tmp0 	= _mm_srli_epi32(tmp0, 7); 							\
 	(x) 	= _mm_add_epi8((y), (y)); 							\
 	(x) 	= _mm_or_si128((x), tmp0); 							\
-})
+}
 
 // compute x = LFSR3(y) on all bytes within y
-#define LFSR3(x, y) ({ 											\
+#define LFSR3(x, y) { 											\
 	tmp0 	= _mm_srli_epi32((y), 6);							\
 	tmp0 	= _mm_xor_si128(tmp0, (y)); 						\
 	tmp0 	= _mm_and_si128(tmp0, _mm_set1_epi32(0x01010101));	\
@@ -31,7 +31,7 @@
 	(x) 	= _mm_srli_epi32((y), 1); 							\
 	(x) 	= _mm_and_si128((x), _mm_set1_epi32(0x7f7f7f7f));	\
 	(x) 	= _mm_or_si128((x), tmp0); 							\
-})
+}
 
 // _m128i masks to apply the tweakey schedule permutation
 #define PERM_1 	_mm_set_epi32(0x0e0d0c0f, 0x0b0a0908, 0x07060504, 0x03020100)
@@ -44,8 +44,8 @@
 #define PERM_14 _mm_set_epi32(0x0b0e090d, 0x0a0f0c08, 0x06010503, 0x04000207)
 
 // _m128i masks to extract half of the tweakey state
-#define MASK_0 	_mm_set_epi32(0x00000000, 0x00000000, 0xffffffff, 0xffffffff)
-#define MASK_1 	_mm_set_epi32(0xffffffff, 0xffffffff, 0x00000000, 0x00000000)
+#define MASK_00 	_mm_set_epi32(0x00000000, 0x00000000, 0xffffffff, 0xffffffff)
+#define MASK_01 	_mm_set_epi32(0xffffffff, 0xffffffff, 0x00000000, 0x00000000)
 
 // _m128i masks to integrate the rconsts and the NOT (for Sbox) within the tweakeys at round i
 #define RC_0(i) _mm_set_epi32(0xffffffff, 0xfffffffd, rc[i] >> 4, rc[i] & 0x0f)
@@ -113,7 +113,7 @@ static void precompute_lfsr_tk3(__m128i* rtk, const unsigned char* tk3, const in
 * 					XOR
 * 			b  f  g  a  e  c  d  h 		<- round tweakey bits (byte-wise)
 ******************************************************************************/
-static inline __m128i perm_bits_0(__m128i x) {
+static __forceinline __m128i perm_bits_0(__m128i x) {
 	__m128i res, tmp;
 	res = _mm_and_si128(x, _mm_set1_epi32(0x09090909));
 	tmp = _mm_and_si128(x, _mm_set1_epi32(0x40404040));
@@ -139,7 +139,7 @@ static inline __m128i perm_bits_0(__m128i x) {
 * 					XOR
 * 			g  h  e  f  d  a  b  c 		<- round tweakey bits (byte-wise)
 ******************************************************************************/
-static inline __m128i perm_bits_1(__m128i x) {
+static __forceinline __m128i perm_bits_1(__m128i x) {
 	__m128i res, tmp;
 	res = _mm_and_si128(x, _mm_set1_epi32(0x0c0c0c0c));
 	tmp = _mm_and_si128(x, _mm_set1_epi32(0x03030303));
@@ -165,7 +165,7 @@ static inline __m128i perm_bits_1(__m128i x) {
 * 					XOR
 * 			e  c  d  h  b  f  g  a 		<- round tweakey bits (byte-wise)
 ******************************************************************************/
-static inline __m128i perm_bits_2(__m128i x) {
+static __forceinline __m128i perm_bits_2(__m128i x) {
 	__m128i res, tmp;
 	res = _mm_and_si128(x, _mm_set1_epi32(0x06060606));
 	tmp = _mm_and_si128(x, _mm_set1_epi32(0x30303030));
@@ -193,7 +193,7 @@ static inline __m128i perm_bits_2(__m128i x) {
 * 					XOR
 * 			e  c  d  h  b  f  g  a 		<- round tweakey bits (byte-wise)
 ******************************************************************************/
-static inline __m128i perm_bits_3(__m128i x) {
+static __forceinline __m128i perm_bits_3(__m128i x) {
 	__m128i res, tmp;
 	res = _mm_and_si128(x, _mm_set1_epi32(0x03030303));
 	tmp = _mm_and_si128(x, _mm_set1_epi32(0x10101010));
@@ -212,14 +212,14 @@ static inline __m128i perm_bits_3(__m128i x) {
 * Round constants and NOTs for Sbox calculations are also integrated within the
 * round tweakey to speed up the SKINNY-128 core routine execution.
 ******************************************************************************/
-static void permute_rtk(__m128i* rtk, const unsigned char* tk1, const int rounds) {
+static void __forceinline permute_rtk(__m128i* rtk, const unsigned char* tk1, const int rounds) {
 	int test;
 	__m128i tmp0, tmp1, rtk1;
 	rtk1 	= _mm_loadu_si128((__m128i*)tk1);
 	tmp0 	= _mm_xor_si128(rtk[0], rtk1); 					// XOR TK1 to LFSR2(TK2) ^ LFSR3(TK3)
 	for(int i = 0; i < rounds; i+=8) {
 		test 		= (i % 16 < 8) ? 1 : 0; 				// var to apply the right power of P
-		rtk[i] 		= _mm_and_si128(tmp0, MASK_0); 			// extract half of the tk state 
+		rtk[i] 		= _mm_and_si128(tmp0, MASK_00); 			// extract half of the tk state 
 		rtk[i]  	= _mm_xor_si128(rtk[i], RC_0(i)); 		// add the rconst and NOT for the Sbox
 		rtk[i] 		= perm_bits_0(rtk[i]); 					// 8-bit permutation to match inner-fixslicing
 		rtk[i+1] 	= _mm_xor_si128(rtk[i+1], rtk1); 		// XOR TK1 to LFSR2(TK2) ^ LFSR3(TK3) 
@@ -227,13 +227,13 @@ static void permute_rtk(__m128i* rtk, const unsigned char* tk1, const int rounds
 			tmp0 	= _mm_shuffle_epi8(rtk[i+1], PERM_2); 	// apply P^2 to TK1 ^ LFSR2(TK2) ^ LFSR3(TK3) 
 		else
 			tmp0 	= _mm_shuffle_epi8(rtk[i+1], PERM_10); 	// apply P^10 to TK1 ^ LFSR2(TK2) ^ LFSR3(TK3) 
-		rtk[i+1]  	= _mm_and_si128(tmp0, MASK_1); 			// only extract half of the tk state 
+		rtk[i+1]  	= _mm_and_si128(tmp0, MASK_01); 			// only extract half of the tk state 
 		tmp1 		= _mm_srli_si128(rtk[i+1], 12); 		// 32-bit words reordering to match fixslicing
 		rtk[i+1] 	= _mm_slli_si128(rtk[i+1], 4); 			// 32-bit words reordering to match fixslicing
 		rtk[i+1] 	= _mm_or_si128(rtk[i+1], tmp1); 		// 32-bit words reordering to match fixslicing
 		rtk[i+1]  	= _mm_xor_si128(rtk[i+1], RC_1(i+1));  	// add the rconst and NOTs for the Sbox
 		rtk[i+1] 	= perm_bits_1(rtk[i+1]); 				// 8-bit permutation to match inner-fixslicing
-		rtk[i+2] 	= _mm_and_si128(tmp0, MASK_0); 			// extract half of the tk state 
+		rtk[i+2] 	= _mm_and_si128(tmp0, MASK_00); 			// extract half of the tk state 
 		rtk[i+2] 	= _mm_slli_si128(rtk[i+2], 8); 			// 32-bit words reordering to match fixslicing
 		rtk[i+2]  	= _mm_xor_si128(rtk[i+2], RC_2(i+2));  	// add the rconst and NOTs for the Sbox
 		rtk[i+2] 	= perm_bits_2(rtk[i+2]); 				// 8-bit permutation to match inner-fixslicing
@@ -242,11 +242,11 @@ static void permute_rtk(__m128i* rtk, const unsigned char* tk1, const int rounds
 			tmp0 	= _mm_shuffle_epi8(rtk[i+3], PERM_4);	// apply P^4 to TK1 ^ LFSR2(TK2) ^ LFSR3(TK3)
 		else
 			tmp0 	= _mm_shuffle_epi8(rtk[i+3], PERM_12);	// apply P^12 to TK1 ^ LFSR2(TK2) ^ LFSR3(TK3)
-		rtk[i+3]  	= _mm_and_si128(tmp0, MASK_1); 			// extract half of the tk state 
+		rtk[i+3]  	= _mm_and_si128(tmp0, MASK_01); 			// extract half of the tk state 
 		rtk[i+3] 	= _mm_srli_si128(rtk[i+3], 4); 			// 32-bit words reordering to match fixslicing
 		rtk[i+3]  	= _mm_xor_si128(rtk[i+3], RC_3(i+3));  	// add the rconst and NOTs for the Sbox
 		rtk[i+3] 	= perm_bits_3(rtk[i+3]); 				// 8-bit permutation to match inner-fixslicing
-		rtk[i+4] 	= _mm_and_si128(tmp0, MASK_0); 			// extract half of the tk state 
+		rtk[i+4] 	= _mm_and_si128(tmp0, MASK_00); 			// extract half of the tk state 
 		rtk[i+4]  	= _mm_xor_si128(rtk[i+4], RC_4(i+4));  	// add the rconst and NOTs for the Sbox
 		rtk[i+4] 	= perm_bits_0(rtk[i+4]); 				// 8-bit permutation to match inner-fixslicing
 		rtk[i+5] 	= _mm_xor_si128(rtk[i+5], rtk1); 		// XOR TK1 to LFSR2(TK2) ^ LFSR3(TK3)
@@ -254,13 +254,13 @@ static void permute_rtk(__m128i* rtk, const unsigned char* tk1, const int rounds
 			tmp0 	= _mm_shuffle_epi8(rtk[i+5], PERM_6); 	// apply P^6 to TK1 ^ LFSR2(TK2) ^ LFSR3(TK3)
 		else
 			tmp0 	= _mm_shuffle_epi8(rtk[i+5], PERM_14); 	// apply P^14 to TK1 ^ LFSR2(TK2) ^ LFSR3(TK3)
-		rtk[i+5]  	= _mm_and_si128(tmp0, MASK_1); 			// extract half of the tk state 
+		rtk[i+5]  	= _mm_and_si128(tmp0, MASK_01); 			// extract half of the tk state 
 		tmp1 		= _mm_srli_si128(rtk[i+5], 12); 		// 32-bit words reordering to match fixslicing
 		rtk[i+5] 	= _mm_slli_si128(rtk[i+5], 4); 			// 32-bit words reordering to match fixslicing
 		rtk[i+5] 	= _mm_or_si128(rtk[i+5], tmp1); 		// 32-bit words reordering to match fixslicing
 		rtk[i+5]  	= _mm_xor_si128(rtk[i+5], RC_5(i+5));  	// add the rconst and NOTs for the Sbox
 		rtk[i+5] 	= perm_bits_1(rtk[i+5]); 				// 8-bit permutation to match inner-fixslicing
-		rtk[i+6] 	= _mm_and_si128(tmp0, MASK_0); 			// extract half of the tk state 
+		rtk[i+6] 	= _mm_and_si128(tmp0, MASK_00); 			// extract half of the tk state 
 		rtk[i+6] 	= _mm_slli_si128(rtk[i+6], 8); 			// 32-bit words reordering to match fixslicing
 		rtk[i+6]  	= _mm_xor_si128(rtk[i+6], RC_6(i+6));  	// add the rconst and NOTs for the Sbox
 		rtk[i+6] 	= perm_bits_2(rtk[i+6]); 				// 8-bit permutation to match inner-fixslicing
@@ -269,7 +269,7 @@ static void permute_rtk(__m128i* rtk, const unsigned char* tk1, const int rounds
 			tmp0 	= _mm_shuffle_epi8(rtk[i+7], PERM_8); 	// apply P^8 to TK1 ^ LFSR2(TK2) ^ LFSR3(TK3)
 		else
 			tmp0 	= _mm_shuffle_epi8(rtk[i+7], PERM_1); 	// apply dummy permutation for code compliance
-		rtk[i+7]  	= _mm_and_si128(tmp0, MASK_1); 			// extract half of the tk state 
+		rtk[i+7]  	= _mm_and_si128(tmp0, MASK_01); 			// extract half of the tk state 
 		rtk[i+7] 	= _mm_srli_si128(rtk[i+7], 4); 			// 32-bit words reordering to match fixslicing
 		rtk[i+7]  	= _mm_xor_si128(rtk[i+7], RC_7(i+7));  	// add the rconst and NOTs for the Sbox
 		rtk[i+7] 	= perm_bits_3(rtk[i+7]); 				// 8-bit permutation to match inner-fixslicing
@@ -281,6 +281,16 @@ static void permute_rtk(__m128i* rtk, const unsigned char* tk1, const int rounds
 * Precompute all the round tweakeys for SKINNY-128 tweakable block ciphers.
 ******************************************************************************/
 void precompute_rtk(__m128i* rtk, const tweakey* tk, int rounds) {
+	for(int i = 0; i < rounds; i++)
+		rtk[i] = _mm_set1_epi32(0x00000000);
+	if (rounds >= SKINNY128_256_ROUNDS)
+		precompute_lfsr_tk2(rtk, tk->tk2, rounds);
+	if (rounds == SKINNY128_384_ROUNDS)
+		precompute_lfsr_tk3(rtk, tk->tk3, rounds);
+	permute_rtk(rtk, tk->tk1, rounds);
+}
+
+void __forceinline precompute_rtk_inline(__m128i* rtk, const tweakey* tk, int rounds) {
 	for(int i = 0; i < rounds; i++)
 		rtk[i] = _mm_set1_epi32(0x00000000);
 	if (rounds >= SKINNY128_256_ROUNDS)
